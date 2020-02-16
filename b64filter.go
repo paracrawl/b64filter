@@ -111,7 +111,7 @@ func readNLines(count int, buf *bufio.Reader) (lines [][]byte, err error) {
 	return
 }
 
-func writeDocs(counts chan int, buf *bufio.Reader, w io.Writer) {
+func writeDocs(counts chan int, done chan bool, buf *bufio.Reader, w io.Writer) {
 	for n := range counts {
 		lines, err := readNLines(n, buf)
 		if err != nil {
@@ -131,6 +131,7 @@ func writeDocs(counts chan int, buf *bufio.Reader, w io.Writer) {
 			log.Fatalf("error writing %v lines %v", n, err)
 		}
 	}
+	done <- true
 }
 
 func main() {
@@ -171,8 +172,9 @@ func main() {
 	}
 
 	counts := make(chan int, 256)
+	done := make(chan bool)
 	buf := bufio.NewReader(cmdout)
-	go writeDocs(counts, buf, os.Stdout)
+	go writeDocs(counts, done, buf, os.Stdout)
 
 	docs := readDocs(os.Stdin)
 	i := 0
@@ -192,6 +194,9 @@ func main() {
 	close(counts)
 	cmdin.Close()
 
+	// it is required that all reading from the command is done before
+	// calling Wait(). 
+	_ = <-done
 	if err = cmd.Wait(); err != nil {
 		log.Fatalf("error waiting for command: %v", err)
 	}
