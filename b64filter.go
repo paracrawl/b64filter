@@ -2,15 +2,14 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/base64"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"os/exec"
-	"strings"
 )
 
 func init() {
@@ -30,17 +29,15 @@ Example:
     $ diff test test.cat
     $
 
-The filter program is executed once and fed input from the entire set of documents.
-This means that the filter program must be line-buffered for this to work. Otherwise
-this program will wait on the filter's output forever. This means that doing
-'b64filter sed -l' will work but 'b64filter sed' will not. This also means that
-the filter must produce exactly one line of output per line of input.
+The filter program is executed once and fed input from the entire set of
+documents. This means that the filter must produce exactly one line of output
+per line of input.
 `)
 	}
 }
 
-func readDocs(r io.ReadCloser) (ch chan string) {
-	ch = make(chan string)
+func readDocs(r io.ReadCloser) (ch chan []byte) {
+	ch = make(chan []byte)
 	go func() {
 		buf := bufio.NewReader(r)
 
@@ -60,7 +57,7 @@ func readDocs(r io.ReadCloser) (ch chan string) {
 						if err != nil {
 							log.Fatalf("error decoding line: %v", err)
 						}
-						ch <- string(b[:n])
+						ch <- b[:n]
 					}
 				} else {
 					log.Fatalf("error reading line: %v", err)
@@ -75,7 +72,7 @@ func readDocs(r io.ReadCloser) (ch chan string) {
 				if err != nil {
 					log.Fatalf("error decoding line: %v", err)
 				}
-				ch <- string(b[:n])
+				ch <- b[:n]
 				line = make([]byte, 0, 1024)
 			}
 		}
@@ -83,73 +80,59 @@ func readDocs(r io.ReadCloser) (ch chan string) {
 	return ch
 }
 
-func writeDoc(doc string, w io.Writer) (err error) {
-	bdoc := []byte(doc)
-	elen := base64.StdEncoding.EncodedLen(len(bdoc))
-	b := make([]byte, elen, elen+1)
-	base64.StdEncoding.Encode(b, bdoc)
-	b = append(b, '\n')
-	_, err = w.Write(b)
-	return
-}
+func readNLines(count int, buf *bufio.Reader) (lines [][]byte, err error) {
+	lines = make([][]byte, 0, count)
 
-func readNLines(count int, r io.Reader) (ch chan string) {
-	ch = make(chan string)
-
-	go func() {
-		buf := bufio.NewReader(r)
-		line := make([]byte, 0, 1024)
-		for n := 0; n < count; n++ {
-			chunk, pfx, err := buf.ReadLine()
-			// we got some bytes, accumulate
-			if len(chunk) > 0 {
-				line = append(line, chunk...)
-			}
-			// we're done
-			if err != nil {
-				if err == io.EOF {
-					if len(line) > 0 {
-						ch <- string(line)
-					}
-					break
-				} else {
-					log.Fatalf("error reading line: %v", err)
+	line := make([]byte, 0, 1024)
+	for n := 0; n < count; n++ {
+		log.Printf("reading line %d", n)
+		chunk, pfx, err := buf.ReadLine()
+		// we got some bytes, accumulate
+		if len(chunk) > 0 {
+			line = append(line, chunk...)
+		}
+		// we're done
+		if err != nil {
+			if err == io.EOF {
+				if len(line) > 0 {
+					lines = append(lines, line)
 				}
-			}
-			// if we have a complete line, send it
-			if !pfx {
-				ch <- string(line)
-				line = make([]byte, 0, 1024)
+				break
+			} else {
+				return nil, err
 			}
 		}
-		close(ch)
-	}()
+		// if we have a complete line, send it
+		if !pfx {
+			lines = append(lines, line)
+			line = make([]byte, 0, 1024)
+		}
+	}
 
 	return
 }
 
-func filterDoc(indoc string, cmdin io.Writer, cmdout io.Reader) (outdoc string, err error) {
-	inlines := strings.Split(indoc, "\n")
-	go func() {
-		for _, line := range inlines {
-			cmdin.Write([]byte(line))
-			cmdin.Write([]byte("\n"))
+func writeDocs(counts chan int, buf *bufio.Reader, w io.Writer) {
+	for n := range counts {
+		log.Printf("reading %d lines", n)
+		lines, err := readNLines(n, buf)
+		if err != nil {
+			log.Fatalf("error reading %v lines: %v", n, err)
 		}
-	}()
+		if len(lines) != n {
+			log.Fatalf("expected %v lines got %v", n, len(lines))
+		}
+		doc := bytes.Join(lines, []byte("\n"))
 
-	outlines := make([]string, 0, len(inlines))
-	ch := readNLines(len(inlines), cmdout)
-	for line := range ch {
-		outlines = append(outlines, line)
+		elen := base64.StdEncoding.EncodedLen(len(doc))
+		b := make([]byte, elen, elen+1)
+		base64.StdEncoding.Encode(b, doc)
+		b = append(b, '\n')
+		_, err = w.Write(b)
+		if err != nil {
+			log.Fatalf("error writing %v lines %v", n, err)
+		}
 	}
-
-	if len(inlines) != len(outlines) {
-		err = errors.New(fmt.Sprintf("output linecount (%d) is not equal to input line count (%d)", len(outlines), len(inlines)))
-	}
-
-	outdoc = strings.Join(outlines, "\n")
-
-	return
 }
 
 func main() {
@@ -177,19 +160,28 @@ func main() {
 		log.Fatalf("error starting command: %v", err)
 	}
 
-	indocs := readDocs(os.Stdin)
+	counts := make(chan int, 256)
+	buf := bufio.NewReader(cmdout)
+	go writeDocs(counts, buf, os.Stdout)
+
+	docs := readDocs(os.Stdin)
 	i := 0
-	for indoc := range indocs {
-		outdoc, err := filterDoc(indoc, cmdin, cmdout)
-		if err != nil {
-			log.Fatalf("error writing to command: %v", err)
+	for doc := range docs {
+		log.Printf("writing doc...")
+		lines := bytes.Count(doc, []byte("\n"))
+
+		if _, err := cmdin.Write(doc); err != nil {
+			log.Fatalf("error writing to filter: %v", err)
 		}
-		err = writeDoc(outdoc, os.Stdout)
-		if err != nil {
-			log.Fatalf("error writing output: %v", err)
+		if _, err := cmdin.Write([]byte("\n")); err != nil {
+			log.Fatalf("error writing to filter: %v", err)
 		}
+
+		counts <- lines + 1 // extra newline at end
 		i += 1
 	}
+	close(counts)
+	log.Printf("closing input")
 	cmdin.Close()
 
 	if err = cmd.Wait(); err != nil {
