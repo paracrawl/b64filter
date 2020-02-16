@@ -152,7 +152,19 @@ func main() {
 	if err != nil {
 		log.Fatalf("error getting command output: %v", err)
 	}
+	cmderr, err := cmd.StderrPipe()
+	if err != nil {
+		log.Fatalf("error getting command standard error: %v", err)
+	}
 
+	// preserve stderr
+	go func() {
+		_, err := io.Copy(os.Stderr, cmderr)
+		if err != nil {
+			log.Fatalf("error processing standard error: %v", err)
+		}
+	}()
+	
 	err = cmd.Start()
 	if err != nil {
 		log.Fatalf("error starting command: %v", err)
