@@ -85,7 +85,6 @@ func readNLines(count int, buf *bufio.Reader) (lines [][]byte, err error) {
 
 	line := make([]byte, 0, 1024)
 	for n := 0; n < count; n++ {
-		log.Printf("reading line %d", n)
 		chunk, pfx, err := buf.ReadLine()
 		// we got some bytes, accumulate
 		if len(chunk) > 0 {
@@ -114,7 +113,6 @@ func readNLines(count int, buf *bufio.Reader) (lines [][]byte, err error) {
 
 func writeDocs(counts chan int, buf *bufio.Reader, w io.Writer) {
 	for n := range counts {
-		log.Printf("reading %d lines", n)
 		lines, err := readNLines(n, buf)
 		if err != nil {
 			log.Fatalf("error reading %v lines: %v", n, err)
@@ -167,7 +165,6 @@ func main() {
 	docs := readDocs(os.Stdin)
 	i := 0
 	for doc := range docs {
-		log.Printf("writing doc...")
 		lines := bytes.Count(doc, []byte("\n"))
 
 		if _, err := cmdin.Write(doc); err != nil {
@@ -181,7 +178,6 @@ func main() {
 		i += 1
 	}
 	close(counts)
-	log.Printf("closing input")
 	cmdin.Close()
 
 	if err = cmd.Wait(); err != nil {
