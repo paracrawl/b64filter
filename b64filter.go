@@ -161,10 +161,10 @@ func main() {
 	go func() {
 		_, err := io.Copy(os.Stderr, cmderr)
 		if err != nil {
-			log.Fatalf("error processing standard error: %v", err)
+			log.Printf("error processing standard error: %v", err)
 		}
 	}()
-	
+
 	err = cmd.Start()
 	if err != nil {
 		log.Fatalf("error starting command: %v", err)
