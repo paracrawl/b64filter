@@ -30,9 +30,11 @@ Example:
     $ diff test test.cat
     $
 
-Note that the filter program must be line-buffered for this to work. Otherwise
+The filter program is executed once and fed input from the entire set of documents.
+This means that the filter program must be line-buffered for this to work. Otherwise
 this program will wait on the filter's output forever. This means that doing
-'b64filter sed -l' will work but 'b64filter sed' will not.
+'b64filter sed -l' will work but 'b64filter sed' will not. This also means that
+the filter must produce exactly one line of output per line of input.
 `)
 	}
 }

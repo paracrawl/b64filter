@@ -4,8 +4,11 @@ Runs the given program as a filter on the input. Standard input and output are
 expected to be base 64 encoded, one document or record per line. The input is
 passed in decoded form through the filter program, and then re-encoded.
 
-Note that the filter program must be line-buffered for this to work. Otherwise
-this program will wait on the filter's output forever.
+The filter program is executed once and fed input from the entire set of documents.
+This means that the filter program must be line-buffered for this to work. Otherwise
+this program will wait on the filter's output forever. This means that doing
+'b64filter sed -l' will work but 'b64filter sed' will not. This also means that
+the filter must produce exactly one line of output per line of input.
 
 For example:
 
@@ -34,3 +37,7 @@ For example:
     $ < test b64filter sed > test.hang
     *** hangs ***
 
+The program can be installed with
+
+    go get github.com/paracrawl/b64filter
+    
