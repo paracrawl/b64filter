@@ -15,15 +15,24 @@ import (
 
 func init() {
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [flags] filter [args]\n", os.Args[0])
+		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s filter [args]\n", os.Args[0])
 		flag.PrintDefaults()
 		fmt.Fprintf(flag.CommandLine.Output(),
-`Runs the given program as a filter on the input. Standard input and output are
+`
+Runs the given program as a filter on the input. Standard input and output are
 expected to be base 64 encoded, one document or record per line. The input is
 passed in decoded form through the filter program, and then re-encoded.
 
+Example:
+
+    $ < test b64filter cat > test.cat
+    2020/02/16 12:15:29 b64filter.go:188: processed 2 documents
+    $ diff test test.cat
+    $
+
 Note that the filter program must be line-buffered for this to work. Otherwise
-this program will wait on the filter's output forever.
+this program will wait on the filter's output forever. This means that doing
+'b64filter sed -l' will work but 'b64filter sed' will not.
 `)
 	}
 }
