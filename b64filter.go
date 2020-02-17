@@ -107,16 +107,12 @@ func readNLines(count int, buf *bufio.Reader) (lines [][]byte, err error) {
 			log.Printf("readNLines: reading line %d", n)
 		}
 		chunk, pfx, err := buf.ReadLine()
-		// we got some bytes, accumulate
-		if len(chunk) > 0 {
-			line = append(line, chunk...)
-		}
+		// accumulate bytes
+		line = append(line, chunk...)
 		// we're done
 		if err != nil {
 			if err == io.EOF {
-				if len(line) > 0 {
-					lines = append(lines, line)
-				}
+				lines = append(lines, line)
 				break
 			} else {
 				return nil, err
@@ -126,11 +122,13 @@ func readNLines(count int, buf *bufio.Reader) (lines [][]byte, err error) {
 		if !pfx {
 			lines = append(lines, line)
 			line = make([]byte, 0, 1024)
+		} else { // don't have a complete line, loop again
+			n--
 		}
 	}
 
 	if debug {
-		log.Printf("readNLines: read %v lines", count)
+		log.Printf("readNLines: read %v lines", len(lines))
 	}
 	return
 }
