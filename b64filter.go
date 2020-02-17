@@ -12,7 +12,10 @@ import (
 	"os/exec"
 )
 
+var debug bool
+
 func init() {
+	flag.BoolVar(&debug, "d", false, "Debugging output")
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s filter [args]\n", os.Args[0])
 		flag.PrintDefaults()
@@ -50,12 +53,18 @@ func readDocs(r io.ReadCloser) (ch chan []byte) {
 			}
 			// we're done
 			if err != nil {
+				if debug {
+					log.Printf("readDocs: finished (%v)", err)
+				}
 				if err == io.EOF {
 					if len(line) > 0 {
 						b := make([]byte, base64.StdEncoding.DecodedLen(len(line)))
 						n, err := base64.StdEncoding.Decode(b, line)
 						if err != nil {
-							log.Fatalf("error decoding line: %v", err)
+							log.Fatalf("readDocs: error decoding line (%v)", err)
+						}
+						if debug {
+							log.Printf("readDocs: sending doc (qsize: %d)", len(ch))
 						}
 						ch <- b[:n]
 					}
@@ -70,7 +79,10 @@ func readDocs(r io.ReadCloser) (ch chan []byte) {
 				b := make([]byte, base64.StdEncoding.DecodedLen(len(line)))
 				n, err := base64.StdEncoding.Decode(b, line)
 				if err != nil {
-					log.Fatalf("error decoding line: %v", err)
+					log.Fatalf("readDocs: error decoding line (%v)", err)
+				}
+				if debug {
+					log.Printf("readDocs: sending doc (qsize: %d)", len(ch))
 				}
 				ch <- b[:n]
 				line = make([]byte, 0, 1024)
@@ -81,6 +93,10 @@ func readDocs(r io.ReadCloser) (ch chan []byte) {
 }
 
 func readNLines(count int, buf *bufio.Reader) (lines [][]byte, err error) {
+	if debug {
+		log.Printf("readNLines: reading %v lines", count)
+	}
+
 	lines = make([][]byte, 0, count)
 
 	line := make([]byte, 0, 1024)
@@ -108,17 +124,23 @@ func readNLines(count int, buf *bufio.Reader) (lines [][]byte, err error) {
 		}
 	}
 
+	if debug {
+		log.Printf("readNLines: read %v lines", count)
+	}
 	return
 }
 
 func writeDocs(counts chan int, done chan bool, buf *bufio.Reader, w io.Writer) {
 	for n := range counts {
+		if debug {
+			log.Printf("writeDocs: processing %d line document (qsize: %d)", n, len(counts))
+		}
 		lines, err := readNLines(n, buf)
 		if err != nil {
-			log.Fatalf("error reading %v lines: %v", n, err)
+			log.Fatalf("writeDocs: error reading %v lines: %v", n, err)
 		}
 		if len(lines) != n {
-			log.Fatalf("expected %v lines got %v", n, len(lines))
+			log.Fatalf("writeDocs: expected %v lines got %v", n, len(lines))
 		}
 		doc := bytes.Join(lines, []byte("\n"))
 
@@ -128,8 +150,11 @@ func writeDocs(counts chan int, done chan bool, buf *bufio.Reader, w io.Writer) 
 		b = append(b, '\n')
 		_, err = w.Write(b)
 		if err != nil {
-			log.Fatalf("error writing %v lines %v", n, err)
+			log.Fatalf("writeDocs: error writing %v lines %v", n, err)
 		}
+	}
+	if debug {
+		log.Printf("writeDocs: finished")
 	}
 	done <- true
 }
