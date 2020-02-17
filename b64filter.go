@@ -10,14 +10,14 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"time"
+	"github.com/golang-collections/go-datastructures/queue"
 )
 
 var debug bool
-var qsize int
 
 func init() {
 	flag.BoolVar(&debug, "d", false, "Debugging output")
-	flag.IntVar(&qsize, "q", 4, "Default queue size")
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s filter [args]\n", os.Args[0])
 		flag.PrintDefaults()
@@ -65,9 +65,6 @@ func readDocs(r io.ReadCloser) (ch chan []byte) {
 						if err != nil {
 							log.Fatalf("readDocs: error decoding line (%v)", err)
 						}
-						if debug {
-							log.Printf("readDocs: sending doc (inqsize: %d)", len(ch))
-						}
 						ch <- b[:n]
 					}
 				} else {
@@ -82,9 +79,6 @@ func readDocs(r io.ReadCloser) (ch chan []byte) {
 				n, err := base64.StdEncoding.Decode(b, line)
 				if err != nil {
 					log.Fatalf("readDocs: error decoding line (%v)", err)
-				}
-				if debug {
-					log.Printf("readDocs: sending doc (inqsize: %d)", len(ch))
 				}
 				ch <- b[:n]
 				line = make([]byte, 0, 1024)
@@ -103,9 +97,9 @@ func readNLines(count int, buf *bufio.Reader) (lines [][]byte, err error) {
 
 	line := make([]byte, 0, 1024)
 	for n := 0; n < count; n++ {
-		if debug {
-			log.Printf("readNLines: reading line %d", n)
-		}
+//		if debug {
+//			log.Printf("readNLines: reading line %d", n)
+//		}
 		chunk, pfx, err := buf.ReadLine()
 		// accumulate bytes
 		line = append(line, chunk...)
@@ -133,11 +127,29 @@ func readNLines(count int, buf *bufio.Reader) (lines [][]byte, err error) {
 	return
 }
 
-func writeDocs(counts chan int, done chan bool, buf *bufio.Reader, w io.Writer) {
-	for n := range counts {
-		if debug {
-			log.Printf("writeDocs: processing %d line document (qsize: %d)", n, len(counts))
+func writeDocs(counts *queue.Queue, done chan bool, buf *bufio.Reader, w io.Writer) {
+	for {
+		// get a line count off the queue
+		ns, err := counts.Get(1)
+		if err != nil {
+			if counts.Disposed() {
+				if debug {
+					log.Printf("writeDocs: write queue finished")
+				}
+				break
+			} else {
+				log.Fatalf("writeDocs: error reading from queue: %v", err)
+			}
 		}
+		if len(ns) != 1 {
+			log.Fatalf("writeDocs: asked for 1 item, got %d", len(ns))
+		}
+		n := ns[0].(int)
+		if debug {
+			log.Printf("writeDocs: processing %d line document (qsize: %d)", n, counts.Len())
+		}
+
+		// read n lines of the document
 		lines, err := readNLines(n, buf)
 		if err != nil {
 			log.Fatalf("writeDocs: error reading %v lines: %v", n, err)
@@ -147,6 +159,7 @@ func writeDocs(counts chan int, done chan bool, buf *bufio.Reader, w io.Writer) 
 		}
 		doc := bytes.Join(lines, []byte("\n"))
 
+		// encode and output
 		elen := base64.StdEncoding.EncodedLen(len(doc))
 		b := make([]byte, elen, elen+1)
 		base64.StdEncoding.Encode(b, doc)
@@ -199,7 +212,7 @@ func main() {
 		log.Fatalf("error starting command: %v", err)
 	}
 
-	counts := make(chan int, qsize)
+	counts := queue.New(32)
 	done := make(chan bool)
 	buf := bufio.NewReader(cmdout)
 	go writeDocs(counts, done, buf, os.Stdout)
@@ -209,7 +222,7 @@ func main() {
 	for doc := range docs {
 		lines := bytes.Count(doc, []byte("\n"))
 		if debug {
-			log.Printf("main: writing %d line document to filter (outqsize: %d)", lines+1, len(counts))
+			log.Printf("main: writing %d line document to filter (qsize: %d)", lines+1, counts.Len())
 		}
 
 		if _, err := cmdin.Write(doc); err != nil {
@@ -219,11 +232,19 @@ func main() {
 			log.Fatalf("error writing to filter: %v", err)
 		}
 
-		counts <- lines + 1 // extra newline at end
+		counts.Put(lines + 1) // extra newline at end
 		i += 1
 	}
-	close(counts)
 	cmdin.Close()
+
+	// wait for the queue to drain
+	for {
+		if counts.Empty() {
+			counts.Dispose()
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 
 	// it is required that all reading from the command is done before
 	// calling Wait(). 
