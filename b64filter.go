@@ -13,9 +13,11 @@ import (
 )
 
 var debug bool
+var qsize int
 
 func init() {
 	flag.BoolVar(&debug, "d", false, "Debugging output")
+	flag.IntVar(&qsize, "q", 128, "Default queue size")
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s filter [args]\n", os.Args[0])
 		flag.PrintDefaults()
@@ -64,7 +66,7 @@ func readDocs(r io.ReadCloser) (ch chan []byte) {
 							log.Fatalf("readDocs: error decoding line (%v)", err)
 						}
 						if debug {
-							log.Printf("readDocs: sending doc (qsize: %d)", len(ch))
+							log.Printf("readDocs: sending doc (inqsize: %d)", len(ch))
 						}
 						ch <- b[:n]
 					}
@@ -82,7 +84,7 @@ func readDocs(r io.ReadCloser) (ch chan []byte) {
 					log.Fatalf("readDocs: error decoding line (%v)", err)
 				}
 				if debug {
-					log.Printf("readDocs: sending doc (qsize: %d)", len(ch))
+					log.Printf("readDocs: sending doc (inqsize: %d)", len(ch))
 				}
 				ch <- b[:n]
 				line = make([]byte, 0, 1024)
@@ -101,6 +103,9 @@ func readNLines(count int, buf *bufio.Reader) (lines [][]byte, err error) {
 
 	line := make([]byte, 0, 1024)
 	for n := 0; n < count; n++ {
+		if debug {
+			log.Printf("readNLines: reading line %d", n)
+		}
 		chunk, pfx, err := buf.ReadLine()
 		// we got some bytes, accumulate
 		if len(chunk) > 0 {
@@ -196,7 +201,7 @@ func main() {
 		log.Fatalf("error starting command: %v", err)
 	}
 
-	counts := make(chan int, 256)
+	counts := make(chan int, qsize)
 	done := make(chan bool)
 	buf := bufio.NewReader(cmdout)
 	go writeDocs(counts, done, buf, os.Stdout)
@@ -205,6 +210,9 @@ func main() {
 	i := 0
 	for doc := range docs {
 		lines := bytes.Count(doc, []byte("\n"))
+		if debug {
+			log.Printf("main: writing %d line document to filter (outqsize: %d)", lines+1, len(counts))
+		}
 
 		if _, err := cmdin.Write(doc); err != nil {
 			log.Fatalf("error writing to filter: %v", err)
