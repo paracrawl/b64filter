@@ -17,7 +17,7 @@ var qsize int
 
 func init() {
 	flag.BoolVar(&debug, "d", false, "Debugging output")
-	flag.IntVar(&qsize, "q", 128, "Default queue size")
+	flag.IntVar(&qsize, "q", 4, "Default queue size")
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s filter [args]\n", os.Args[0])
 		flag.PrintDefaults()
