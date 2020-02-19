@@ -15,9 +15,11 @@ import (
 )
 
 var debug bool
+var progress int
 
 func init() {
 	flag.BoolVar(&debug, "d", false, "Debugging output")
+	flag.IntVar(&progress, "p", 100, "Report progress every p files")
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s filter [args]\n", os.Args[0])
 		flag.PrintDefaults()
@@ -128,6 +130,9 @@ func readNLines(count int, buf *bufio.Reader) (lines [][]byte, err error) {
 }
 
 func writeDocs(counts *queue.Queue, done chan bool, buf *bufio.Reader, w io.Writer) {
+	ndocs := 0
+	nlines := 0
+	start := time.Now()
 	for {
 		// get a line count off the queue
 		ns, err := counts.Get(1)
@@ -167,6 +172,13 @@ func writeDocs(counts *queue.Queue, done chan bool, buf *bufio.Reader, w io.Writ
 		_, err = w.Write(b)
 		if err != nil {
 			log.Fatalf("writeDocs: error writing %v lines %v", n, err)
+		}
+
+		ndocs += 1
+		nlines += n
+		if progress > 0 && ndocs % progress == 0 {
+			now := time.Now()
+			log.Printf("writeDocs: written %d docs, %d lines in %s", ndocs, nlines, now.Sub(start).String())
 		}
 	}
 	if debug {
