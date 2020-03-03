@@ -202,22 +202,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("error getting command input: %v", err)
 	}
-	cmdout, err := cmd.StdoutPipe()
-	if err != nil {
-		log.Fatalf("error getting command output: %v", err)
-	}
-	cmderr, err := cmd.StderrPipe()
-	if err != nil {
-		log.Fatalf("error getting command standard error: %v", err)
-	}
 
-	// preserve stderr
-	go func() {
-		_, err := io.Copy(os.Stderr, cmderr)
-		if err != nil {
-			log.Printf("error processing standard error: %v", err)
-		}
-	}()
+	var cmdout bytes.Buffer
+	cmd.Stdout = &cmdout
+ 	cmd.Stderr = os.Stderr
 
 	err = cmd.Start()
 	if err != nil {
@@ -226,7 +214,7 @@ func main() {
 
 	counts := queue.New(32)
 	done := make(chan bool)
-	buf := bufio.NewReader(cmdout)
+	buf := bufio.NewReader(&cmdout)
 	go writeDocs(counts, done, buf, os.Stdout)
 
 	docs := readDocs(os.Stdin)
