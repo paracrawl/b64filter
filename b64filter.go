@@ -173,7 +173,7 @@ func writeDocs(counts *queue.Queue, done chan bool, buf *LockBuffer, w io.Writer
 		if len(lines) != n {
 			log.Fatalf("writeDocs: expected %v lines got %v", n, len(lines))
 		}
-		doc := bytes.Join(lines, []byte("\n"))
+		doc := bytes.Join(lines, []byte(""))
 
 		// encode and output
 		elen := base64.StdEncoding.EncodedLen(len(doc))
