@@ -205,6 +205,8 @@ func main() {
 
 	counts := queue.New(32)
 	done := make(chan bool)
+
+	cmdout.Grow(8388608)
 	go writeDocs(counts, done, &cmdout, os.Stdout)
 
 	docs := readDocs(os.Stdin)
