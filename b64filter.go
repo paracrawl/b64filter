@@ -90,7 +90,7 @@ func readDocs(r io.ReadCloser) (ch chan []byte) {
 	return ch
 }
 
-func readNLines(count int, buf *bufio.Reader) (lines [][]byte, err error) {
+func readNLines(count int, buf *bytes.Buffer) (lines [][]byte, err error) {
 	if debug {
 		log.Printf("readNLines: reading %v lines", count)
 	}
@@ -101,24 +101,15 @@ func readNLines(count int, buf *bufio.Reader) (lines [][]byte, err error) {
 	for n := 0; n < count; n++ {
 //		if debug {
 //			log.Printf("readNLines: reading line %d", n)
-//		}
-		chunk, pfx, err := buf.ReadLine()
-		// accumulate bytes
+		//		}
+		chunk, err := buf.ReadBytes('\n')
 		line = append(line, chunk...)
-		// we're done
-		if err != nil {
-			if err == io.EOF {
-				lines = append(lines, line)
-				break
-			} else {
-				return nil, err
-			}
-		}
-		// if we have a complete line, send it
-		if !pfx {
+
+		// got a complete line
+		if err == nil {
 			lines = append(lines, line)
 			line = make([]byte, 0, 1024)
-		} else { // don't have a complete line, loop again
+		} else { // not a complete line
 			n--
 		}
 	}
@@ -129,7 +120,7 @@ func readNLines(count int, buf *bufio.Reader) (lines [][]byte, err error) {
 	return
 }
 
-func writeDocs(counts *queue.Queue, done chan bool, buf *bufio.Reader, w io.Writer) {
+func writeDocs(counts *queue.Queue, done chan bool, buf *bytes.Buffer, w io.Writer) {
 	ndocs := 0
 	nlines := 0
 	start := time.Now()
@@ -214,8 +205,7 @@ func main() {
 
 	counts := queue.New(32)
 	done := make(chan bool)
-	buf := bufio.NewReader(&cmdout)
-	go writeDocs(counts, done, buf, os.Stdout)
+	go writeDocs(counts, done, &cmdout, os.Stdout)
 
 	docs := readDocs(os.Stdin)
 	i := 0
