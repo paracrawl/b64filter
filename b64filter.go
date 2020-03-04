@@ -175,6 +175,12 @@ func writeDocs(counts *queue.Queue, done chan bool, buf *LockBuffer, w io.Writer
 		}
 		doc := bytes.Join(lines, []byte(""))
 
+		// XXX kludge: remove extraneous trailing newline from document. But it
+		// shouldn't be here in the first place
+		if len(doc) > 1 && doc[len(doc)-2] == '\n' && doc[len(doc)-1] == '\n' {
+			doc = doc[:len(doc)-1
+		}
+
 		// encode and output
 		elen := base64.StdEncoding.EncodedLen(len(doc))
 		b := make([]byte, elen, elen+1)
