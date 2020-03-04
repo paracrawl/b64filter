@@ -10,12 +10,32 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"sync"
 	"time"
 	"github.com/golang-collections/go-datastructures/queue"
 )
 
 var debug bool
 var progress int
+
+type LockBuffer struct {
+	buf bytes.Buffer
+	lock sync.Mutex
+}
+
+func (lb *LockBuffer) Write(p []byte) (n int, err error) {
+	lb.lock.Lock()
+	n, err = lb.buf.Write(p)
+	lb.lock.Unlock()
+	return
+}
+
+func (lb *LockBuffer) ReadBytes(delim byte) (line []byte, err error) {
+	lb.lock.Lock()
+	line, err = lb.buf.ReadBytes(delim)
+	lb.lock.Unlock()
+	return
+}
 
 func init() {
 	flag.BoolVar(&debug, "d", false, "Debugging output")
@@ -90,7 +110,7 @@ func readDocs(r io.ReadCloser) (ch chan []byte) {
 	return ch
 }
 
-func readNLines(count int, buf *bytes.Buffer) (lines [][]byte, err error) {
+func readNLines(count int, buf *LockBuffer) (lines [][]byte, err error) {
 	if debug {
 		log.Printf("readNLines: reading %v lines", count)
 	}
@@ -120,7 +140,7 @@ func readNLines(count int, buf *bytes.Buffer) (lines [][]byte, err error) {
 	return
 }
 
-func writeDocs(counts *queue.Queue, done chan bool, buf *bytes.Buffer, w io.Writer) {
+func writeDocs(counts *queue.Queue, done chan bool, buf *LockBuffer, w io.Writer) {
 	ndocs := 0
 	nlines := 0
 	start := time.Now()
@@ -194,7 +214,7 @@ func main() {
 		log.Fatalf("error getting command input: %v", err)
 	}
 
-	var cmdout bytes.Buffer
+	var cmdout LockBuffer
 	cmd.Stdout = &cmdout
  	cmd.Stderr = os.Stderr
 
