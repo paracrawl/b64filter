@@ -140,7 +140,7 @@ func readNLines(count int, buf *LockBuffer) (lines [][]byte, err error) {
 	return
 }
 
-func writeDocs(counts *queue.Queue, done chan bool, buf *LockBuffer, w io.Writer) {
+func writeDocs(counts *queue.Queue, buf *LockBuffer, w io.Writer) {
 	ndocs := 0
 	nlines := 0
 	start := time.Now()
@@ -201,7 +201,6 @@ func writeDocs(counts *queue.Queue, done chan bool, buf *LockBuffer, w io.Writer
 	if debug {
 		log.Printf("writeDocs: finished")
 	}
-	done <- true
 }
 
 func main() {
@@ -230,9 +229,8 @@ func main() {
 	}
 
 	counts := queue.New(32)
-	done := make(chan bool)
 
-	go writeDocs(counts, done, &cmdout, os.Stdout)
+	go writeDocs(counts, &cmdout, os.Stdout)
 
 	docs := readDocs(os.Stdin)
 	i := 0
@@ -245,6 +243,7 @@ func main() {
 		if _, err := cmdin.Write(doc); err != nil {
 			log.Fatalf("error writing to filter: %v", err)
 		}
+
 		if _, err := cmdin.Write([]byte("\n")); err != nil {
 			log.Fatalf("error writing to filter: %v", err)
 		}
@@ -254,18 +253,6 @@ func main() {
 	}
 	cmdin.Close()
 
-	// wait for the queue to drain
-	for {
-		if counts.Empty() {
-			counts.Dispose()
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	// it is required that all reading from the command is done before
-	// calling Wait(). 
-	_ = <-done
 	if err = cmd.Wait(); err != nil {
 		log.Fatalf("error waiting for command: %v", err)
 	}
