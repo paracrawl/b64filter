@@ -254,6 +254,10 @@ func main() {
 	}
 	cmdin.Close()
 
+	if err = cmd.Wait(); err != nil {
+		log.Fatalf("error waiting for command: %v", err)
+	}
+
 	// wait for the queue to drain
 	for {
 		if counts.Empty() {
@@ -266,9 +270,6 @@ func main() {
 	// it is required that all reading from the command is done before
 	// calling Wait(). 
 	_ = <-done
-	if err = cmd.Wait(); err != nil {
-		log.Fatalf("error waiting for command: %v", err)
-	}
 
 	log.Printf("processed %v documents", i)
 }
