@@ -1,3 +1,7 @@
+# Deprecated
+
+Use https://github.com/jelmervdl/bitextor/blob/doctools/document-aligner/b64filter.cpp instead.  
+
 ## b64filter
 
 Runs the given program as a filter on the input. Standard input and output are
